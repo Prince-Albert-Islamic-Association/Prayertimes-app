@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Islamic Prayer Times</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🕌 Islamic Prayer Times</h1>
+      <p>Select a preset city or enter any location worldwide</p>
+    </header>
+
+    <div class="card">
+      <span class="section-label">Quick Select Cities</span>
+      <div class="presets" id="presetContainer"></div>
+
+      <span class="section-label">Or Type City & Country</span>
+      <form id="searchForm">
+        <div class="input-group">
+          <input type="text" id="cityInput" placeholder="City (e.g., Toronto)" required />
+          <input type="text" id="countryInput" placeholder="Country (e.g., Canada)" required />
+        </div>
+        <div class="controls-row">
+          <select id="methodSelect" title="Calculation Method">
+            <option value="2">ISNA (North America)</option>
+            <option value="3">Muslim World League</option>
+            <option value="4">Umm Al-Qura (Makkah)</option>
+            <option value="5">Egyptian General Authority</option>
+            <option value="1">Univ. of Islamic Sciences, Karachi</option>
+            <option value="13">Diyanet (Turkey)</option>
+          </select>
+          <button type="submit" class="btn-primary">Get Times</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card" id="resultsCard">
+      <div class="status-msg" id="statusMsg">Loading prayer times...</div>
+      <div id="resultsContent" style="display: none;">
+        <div class="location-header">
+          <div>
+            <div class="location-title" id="displayLocation"></div>
+            <div class="timezone-text" id="displayTimezone"></div>
+          </div>
+          <div class="date-info">
+            <div id="gregorianDate"></div>
+            <div id="hijriDate"></div>
+          </div>
+        </div>
+        <div class="prayer-list" id="prayerList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

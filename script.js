@@ -80,7 +80,6 @@ function getHijriDateString(dateObj) {
   }
 }
 
-// Get coordinates for any typed city using Open-Meteo (fast, free, unblocked)
 async function getCoordinates(city, country) {
   const geoUrl = `https://open-meteo.com{encodeURIComponent(city)}&count=5&language=en&format=json`;
   const res = await fetch(geoUrl);
@@ -91,10 +90,9 @@ async function getCoordinates(city, country) {
     throw new Error(`City "${city}" not found. Check spelling.`);
   }
 
-  // Match country if possible, otherwise take top result
   const match = data.results.find(
     (item) => item.country && item.country.toLowerCase().includes(country.toLowerCase())
-  ) || data.results[0];
+  ) || data.results;
 
   return {
     lat: match.latitude,
@@ -112,9 +110,12 @@ async function loadPrayerTimes(city, country, method, presetData = null) {
   resultsContent.style.display = "none";
 
   try {
+    if (typeof adhan === "undefined") {
+      throw new Error("Adhan library failed to load. Check your internet connection.");
+    }
+
     let locationInfo = presetData;
 
-    // If user typed a custom city, look up coordinates
     if (!locationInfo) {
       locationInfo = await getCoordinates(city, country);
     }
@@ -201,9 +202,9 @@ searchForm.addEventListener("submit", (e) => {
   }
 });
 
-// Initialize app
+// Initialisation avec la première ville (Makkah)
 renderPresets();
-const defaultLoc = PRESET_LOCATIONS[0];
+const defaultLoc = PRESET_LOCATIONS;
 cityInput.value = defaultLoc.city;
 countryInput.value = defaultLoc.country;
 methodSelect.value = defaultLoc.method;

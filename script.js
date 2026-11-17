@@ -42,7 +42,10 @@ function renderPresets() {
 
 function highlightActivePreset(activeCity) {
   document.querySelectorAll(".preset-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.textContent.toLowerCase().startsWith(activeCity.toLowerCase() + ","));
+    btn.classList.toggle(
+      "active",
+      btn.textContent.toLowerCase().startsWith(activeCity.toLowerCase() + ",")
+    );
   });
 }
 
@@ -75,7 +78,7 @@ function getNextPrayer(timings, timezone) {
         return prayer;
       }
     }
-    return "Fajr"; // Next day's Fajr
+    return "Fajr";
   } catch (e) {
     return null;
   }
@@ -88,8 +91,15 @@ async function fetchPrayerTimes(city, country, method) {
   resultsContent.style.display = "none";
 
   try {
-    const url = `https://aladhan.com{encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=${method}`;
+    const url = `https://aladhan.com{encodeURIComponent(
+      city
+    )}&country=${encodeURIComponent(country)}&method=${method}`;
+
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Server error (${response.status}). Try again shortly.`);
+    }
+
     const data = await response.json();
 
     if (data.code !== 200 || !data.data) {
@@ -102,7 +112,9 @@ async function fetchPrayerTimes(city, country, method) {
     document.getElementById("displayLocation").textContent = `${city}, ${country}`;
     document.getElementById("displayTimezone").textContent = `Timezone: ${meta.timezone}`;
     document.getElementById("gregorianDate").textContent = date.readable;
-    document.getElementById("hijriDate").textContent = `${date.hijri.day} ${date.hijri.month.en} ${date.hijri.year} AH`;
+    document.getElementById(
+      "hijriDate"
+    ).textContent = `${date.hijri.day} ${date.hijri.month.en} ${date.hijri.year} AH`;
 
     const prayerList = document.getElementById("prayerList");
     prayerList.innerHTML = "";
@@ -125,7 +137,13 @@ async function fetchPrayerTimes(city, country, method) {
     resultsContent.style.display = "block";
   } catch (err) {
     statusMsg.className = "status-msg error";
-    statusMsg.textContent = err.message || "Error loading prayer times.";
+    if (window.location.protocol === "file:") {
+      statusMsg.textContent =
+        "Blocked by browser local file security. Run via a local server (like VS Code Live Server) or upload to GitHub Pages.";
+    } else {
+      statusMsg.textContent =
+        err.message || "Network error: Could not connect to prayer times API.";
+    }
   }
 }
 

@@ -1,14 +1,13 @@
-// Pre-written cities and countries (Add or edit items freely)
 const PRESET_LOCATIONS = [
-  { city: "Makkah", country: "Saudi Arabia", method: "4" },
-  { city: "Madinah", country: "Saudi Arabia", method: "4" },
-  { city: "Istanbul", country: "Turkey", method: "13" },
-  { city: "London", country: "United Kingdom", method: "3" },
-  { city: "Toronto", country: "Canada", method: "2" },
-  { city: "New York", country: "USA", method: "2" },
-  { city: "Cairo", country: "Egypt", method: "5" },
-  { city: "Kuala Lumpur", country: "Malaysia", method: "3" },
-  { city: "Dubai", country: "UAE", method: "4" }
+  { city: "Makkah", country: "Saudi Arabia", method: "4", lat: 21.4225, lon: 39.8262, tz: "Asia/Riyadh" },
+  { city: "Madinah", country: "Saudi Arabia", method: "4", lat: 24.5247, lon: 39.5692, tz: "Asia/Riyadh" },
+  { city: "Istanbul", country: "Turkey", method: "13", lat: 41.0082, lon: 28.9784, tz: "Europe/Istanbul" },
+  { city: "London", country: "United Kingdom", method: "3", lat: 51.5074, lon: -0.1278, tz: "Europe/London" },
+  { city: "Toronto", country: "Canada", method: "2", lat: 43.6532, lon: -79.3832, tz: "America/Toronto" },
+  { city: "New York", country: "USA", method: "2", lat: 40.7128, lon: -74.0060, tz: "America/New_York" },
+  { city: "Cairo", country: "Egypt", method: "5", lat: 30.0444, lon: 31.2357, tz: "Africa/Cairo" },
+  { city: "Kuala Lumpur", country: "Malaysia", method: "3", lat: 3.1390, lon: 101.6869, tz: "Asia/Kuala_Lumpur" },
+  { city: "Dubai", country: "UAE", method: "4", lat: 25.2048, lon: 55.2708, tz: "Asia/Dubai" }
 ];
 
 const PRAYERS_TO_SHOW = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"];
@@ -21,7 +20,6 @@ const methodSelect = document.getElementById("methodSelect");
 const statusMsg = document.getElementById("statusMsg");
 const resultsContent = document.getElementById("resultsContent");
 
-// Render preset buttons
 function renderPresets() {
   presetContainer.innerHTML = "";
   PRESET_LOCATIONS.forEach((loc) => {
@@ -34,7 +32,7 @@ function renderPresets() {
       countryInput.value = loc.country;
       methodSelect.value = loc.method;
       highlightActivePreset(loc.city);
-      fetchPrayerTimes(loc.city, loc.country, loc.method);
+      loadPrayerTimes(loc.city, loc.country, loc.method, loc);
     };
     presetContainer.appendChild(btn);
   });
@@ -49,78 +47,125 @@ function highlightActivePreset(activeCity) {
   });
 }
 
-// Format 24h time string ("18:45 (AST)") to 12h AM/PM ("6:45 PM")
-function formatTo12Hour(time24) {
-  const cleanTime = time24.split(" ")[0];
-  let [hours, minutes] = cleanTime.split(":").map(Number);
-  const ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12 || 12;
-  return `${hours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
-}
-
-// Determine which prayer is next based on the target city's current timezone
-function getNextPrayer(timings, timezone) {
-  try {
-    const nowStr = new Date().toLocaleTimeString("en-GB", {
-      timeZone: timezone,
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-    const [nowH, nowM] = nowStr.split(":").map(Number);
-    const currentMinutes = nowH * 60 + nowM;
-
-    for (const prayer of PRAYERS_TO_SHOW) {
-      if (prayer === "Sunrise") continue;
-      const cleanTime = timings[prayer].split(" ")[0];
-      const [pH, pM] = cleanTime.split(":").map(Number);
-      const prayerMinutes = pH * 60 + pM;
-      if (prayerMinutes > currentMinutes) {
-        return prayer;
-      }
-    }
-    return "Fajr";
-  } catch (e) {
-    return null;
+function getAdhanParams(methodId) {
+  switch (String(methodId)) {
+    case "2": return adhan.CalculationMethod.NorthAmerica();
+    case "3": return adhan.CalculationMethod.MuslimWorldLeague();
+    case "4": return adhan.CalculationMethod.UmmAlQura();
+    case "5": return adhan.CalculationMethod.Egyptian();
+    case "1": return adhan.CalculationMethod.Karachi();
+    case "13": return adhan.CalculationMethod.Turkey();
+    default: return adhan.CalculationMethod.MuslimWorldLeague();
   }
 }
 
-async function fetchPrayerTimes(city, country, method) {
+function formatDateInTimezone(dateObj, timezone) {
+  return dateObj.toLocaleTimeString("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  });
+}
+
+function getHijriDateString(dateObj) {
+  try {
+    return new Intl.DateTimeFormat("en-TN-u-ca-islamic-umalqura", {
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    }).format(dateObj);
+  } catch (e) {
+    return "";
+  }
+}
+
+// Get coordinates for any typed city using Open-Meteo (fast, free, unblocked)
+async function getCoordinates(city, country) {
+  const geoUrl = `https://open-meteo.com{encodeURIComponent(city)}&count=5&language=en&format=json`;
+  const res = await fetch(geoUrl);
+  if (!res.ok) throw new Error("Could not look up city coordinates.");
+  const data = await res.json();
+
+  if (!data.results || data.results.length === 0) {
+    throw new Error(`City "${city}" not found. Check spelling.`);
+  }
+
+  // Match country if possible, otherwise take top result
+  const match = data.results.find(
+    (item) => item.country && item.country.toLowerCase().includes(country.toLowerCase())
+  ) || data.results[0];
+
+  return {
+    lat: match.latitude,
+    lon: match.longitude,
+    tz: match.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    resolvedCity: match.name,
+    resolvedCountry: match.country || country
+  };
+}
+
+async function loadPrayerTimes(city, country, method, presetData = null) {
   statusMsg.style.display = "block";
   statusMsg.className = "status-msg";
-  statusMsg.textContent = `Fetching prayer times for ${city}, ${country}...`;
+  statusMsg.textContent = `Calculating prayer times for ${city}, ${country}...`;
   resultsContent.style.display = "none";
 
   try {
-    const url = `https://aladhan.com{encodeURIComponent(
-      city
-    )}&country=${encodeURIComponent(country)}&method=${method}`;
+    let locationInfo = presetData;
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Server error (${response.status}). Try again shortly.`);
+    // If user typed a custom city, look up coordinates
+    if (!locationInfo) {
+      locationInfo = await getCoordinates(city, country);
     }
 
-    const data = await response.json();
+    const now = new Date();
+    const coords = new adhan.Coordinates(locationInfo.lat, locationInfo.lon);
+    const params = getAdhanParams(method);
+    const prayerTimes = new adhan.PrayerTimes(coords, now, params);
 
-    if (data.code !== 200 || !data.data) {
-      throw new Error("Location not found. Please check spelling.");
-    }
+    const nextPrayerEnum = prayerTimes.nextPrayer();
+    const nextPrayerMap = {
+      fajr: "Fajr",
+      sunrise: "Sunrise",
+      dhuhr: "Dhuhr",
+      asr: "Asr",
+      maghrib: "Maghrib",
+      isha: "Isha",
+      none: "Fajr"
+    };
+    const nextPrayerName = nextPrayerMap[nextPrayerEnum] || "Fajr";
 
-    const { timings, date, meta } = data.data;
-    const nextPrayer = getNextPrayer(timings, meta.timezone);
+    const timesMap = {
+      Fajr: prayerTimes.fajr,
+      Sunrise: prayerTimes.sunrise,
+      Dhuhr: prayerTimes.dhuhr,
+      Asr: prayerTimes.asr,
+      Maghrib: prayerTimes.maghrib,
+      Isha: prayerTimes.isha
+    };
 
-    document.getElementById("displayLocation").textContent = `${city}, ${country}`;
-    document.getElementById("displayTimezone").textContent = `Timezone: ${meta.timezone}`;
-    document.getElementById("gregorianDate").textContent = date.readable;
-    document.getElementById(
-      "hijriDate"
-    ).textContent = `${date.hijri.day} ${date.hijri.month.en} ${date.hijri.year} AH`;
+    const displayCity = locationInfo.resolvedCity || city;
+    const displayCountry = locationInfo.resolvedCountry || country;
+
+    document.getElementById("displayLocation").textContent = `${displayCity}, ${displayCountry}`;
+    document.getElementById("displayTimezone").textContent = `Timezone: ${locationInfo.tz}`;
+    document.getElementById("gregorianDate").textContent = now.toLocaleDateString("en-US", {
+      timeZone: locationInfo.tz,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+    document.getElementById("hijriDate").textContent = getHijriDateString(now);
 
     const prayerList = document.getElementById("prayerList");
     prayerList.innerHTML = "";
 
     PRAYERS_TO_SHOW.forEach((prayer) => {
-      const isNext = prayer === nextPrayer;
+      const isNext = prayer === nextPrayerName;
+      const formattedTime = formatDateInTimezone(timesMap[prayer], locationInfo.tz);
+
       const row = document.createElement("div");
       row.className = `prayer-item ${isNext ? "next-prayer" : ""}`;
       row.innerHTML = `
@@ -128,7 +173,7 @@ async function fetchPrayerTimes(city, country, method) {
           ${prayer}
           ${isNext ? '<span class="badge">Next</span>' : ""}
         </span>
-        <span class="prayer-time">${formatTo12Hour(timings[prayer])}</span>
+        <span class="prayer-time">${formattedTime}</span>
       `;
       prayerList.appendChild(row);
     });
@@ -137,13 +182,7 @@ async function fetchPrayerTimes(city, country, method) {
     resultsContent.style.display = "block";
   } catch (err) {
     statusMsg.className = "status-msg error";
-    if (window.location.protocol === "file:") {
-      statusMsg.textContent =
-        "Blocked by browser local file security. Run via a local server (like VS Code Live Server) or upload to GitHub Pages.";
-    } else {
-      statusMsg.textContent =
-        err.message || "Network error: Could not connect to prayer times API.";
-    }
+    statusMsg.textContent = err.message || "Could not load prayer times.";
   }
 }
 
@@ -152,17 +191,21 @@ searchForm.addEventListener("submit", (e) => {
   const city = cityInput.value.trim();
   const country = countryInput.value.trim();
   const method = methodSelect.value;
+
   if (city && country) {
     highlightActivePreset(city);
-    fetchPrayerTimes(city, country, method);
+    const matchingPreset = PRESET_LOCATIONS.find(
+      (p) => p.city.toLowerCase() === city.toLowerCase() && p.country.toLowerCase() === country.toLowerCase()
+    );
+    loadPrayerTimes(city, country, method, matchingPreset || null);
   }
 });
 
-// Initialize app with the first preset
+// Initialize app
 renderPresets();
 const defaultLoc = PRESET_LOCATIONS[0];
 cityInput.value = defaultLoc.city;
 countryInput.value = defaultLoc.country;
 methodSelect.value = defaultLoc.method;
 highlightActivePreset(defaultLoc.city);
-fetchPrayerTimes(defaultLoc.city, defaultLoc.country, defaultLoc.method);
+loadPrayerTimes(defaultLoc.city, defaultLoc.country, defaultLoc.method, defaultLoc);
